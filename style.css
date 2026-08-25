@@ -1,0 +1,204 @@
+/* ==========================================================================
+   🎨 爆速トイレナビ - パニックを鎮めるためのUIデザイン（style.css）
+   ========================================================================== */
+
+/* --- 1. 全体のリセット & 共通設定 --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "游ゴシック体", "Yu Gothic", YuGothic, "Segoe UI", sans-serif;
+}
+
+body {
+    background-color: #f4f7f6;
+    color: #333333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* スマホ画面の最大幅を固定 */
+.app-container {
+    width: 100%;
+    max-width: 480px;
+    background-color: #ffffff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+/* --- 2. ヘッダー --- */
+header {
+    background-color: #008080;
+    color: #ffffff;
+    padding: 15px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+}
+
+/* --- 3. 最優先ナビゲーションエリア --- */
+.navi-section {
+    background-color: #e6f2f2;
+    padding: 25px 15px;
+    text-align: center;
+    border-bottom: 2px solid #b2d8d8;
+}
+
+/* 緊急性を伝えるバッジ（点滅付き） */
+.alert-badge {
+    display: inline-block;
+    background-color: #ff4d4d;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+    animation: pulse 2s infinite;
+}
+
+/* 巨大な矢印 */
+.huge-arrow {
+    font-size: 5.5rem;
+    color: #008080;
+    line-height: 1;
+    margin: 5px 0;
+}
+
+/* 距離のデカ文字 */
+.distance-text {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: #1a1a1a;
+}
+
+.distance-text span {
+    font-size: 1.2rem;
+    color: #666666;
+}
+
+/* 目的地 */
+.target-place {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-top: 8px;
+    color: #004d4d;
+}
+
+/* --- 4. マップエリア（モックアップ用） --- */
+.map-area {
+    flex-grow: 1;
+    background-color: #e5e3df;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    min-height: 220px;
+    border-bottom: 1px solid #dddddd;
+}
+
+#map{
+    width:100%;
+    height:100%;
+    min-height:220px;
+}
+
+/* シミュレーション中タグ */
+.simulation-tag {
+    z-index: 1;
+    font-size: 0.8rem;
+    color: #666666;
+    font-weight: bold;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-top: 5px;
+}
+
+/* --- 5. 当事者専用データエリア --- */
+.status-section {
+    padding: 20px 15px;
+    background-color: #ffffff;
+}
+
+.info-card {
+    background-color: #f9fbfb;
+    border-left: 5px solid #008080;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 0 8px 8px 0;
+}
+
+.info-title {
+    font-size: 0.85rem;
+    color: #666666;
+    margin-bottom: 4px;
+}
+
+.info-value {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #333333;
+}
+
+.stars {
+    color: #ffcc00; /* 平均評価の黄色 */
+}
+
+/* --- 6. フッターの星評価入力デザイン --- */
+footer {
+    padding: 20px 15px;
+    background-color: #ffffff;
+    text-align: center;
+    border-top: 1px solid #eeeeee;
+}
+
+.review-title {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #008080;
+    margin-bottom: 10px;
+}
+
+.star-rating {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.star-input {
+    font-size: 2.5rem; /* タップしやすい巨大サイズ */
+    color: #cccccc;    /* 初期状態はグレー */
+    cursor: pointer;
+    transition: transform 0.1s, color 0.1s;
+    user-select: none;
+}
+
+/* 選択されて色がついた星（★） */
+.star-input.active {
+    color: #ffcc00; /* 金色 */
+}
+
+.star-input:active {
+    transform: scale(1.2); /* タップした瞬間に弾む効果 */
+}
+
+/* --- 7. アニメーションキーフレーム --- */
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+@keyframes bounce {
+    from { transform: translateY(0); }
+    to { transform: translateY(-8px); }
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>爆速トイレナビ - IBS緊急回避システム</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <header>
+            爆速トイレナビ
+        </header>
+
+        <section class="navi-section">
+            <div class="alert-badge">最寄りトイレを自動捕捉中</div>
+            <div class="huge-arrow" id="direction-arrow">⬇</div>
+            <div class="distance-text">直進 45<span>m</span></div>
+            <div class="target-place">渋谷東口ビル 2F公衆トイレ</div>
+        </section>
+
+        <section class="map-area">
+            <div id="map"></div>
+        </section>
+
+        <section class="status-section">
+            <div class="info-card">
+                <div class="info-title">清潔度・設備環境（ユーザー平均）</div>
+                <div class="info-value">暖房便座・ウォシュレットあり / 清潔感：<span class="stars">★★★</span></div>
+            </div>
+        </section>
+
+        <footer>
+            <p class="review-title">レビューにご協力ください</p>
+            <div class="star-rating">
+                <span class="star-input" data-value="1">☆</span>
+                <span class="star-input" data-value="2">☆</span>
+                <span class="star-input" data-value="3">☆</span>
+                <span class="star-input" data-value="4">☆</span>
+                <span class="star-input" data-value="5">☆</span>
+            </div>
+        </footer>
+
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

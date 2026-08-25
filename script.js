@@ -307,6 +307,7 @@ out center;
                         encodeURIComponent(query)
                 }
             );
+       　　 alert("② fetch完了");
             clearTimeout(timeoutId);
         // --------------------------------------------------
         // HTTPエラー確認

@@ -215,7 +215,7 @@ function successGPS(position) {
 // ==========================================================================
 
 async function searchNearbyToilets(userLat, userLng) {
-    alert.log("🔎 周辺施設検索が実行されました！");
+    alert("🔎 周辺施設検索が実行されました！");
 
     // 検索する施設
     // 🚻 公衆トイレ

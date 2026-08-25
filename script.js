@@ -288,6 +288,15 @@ out center;
         // --------------------------------------------------
         alert("🌐 周辺施設の検索中...");
         alert("fetch開始!")
+                const testUrl ="https://overpass-api.de/api/interpreter?data=" +
+     　　encodeURIComponent(query);
+
+   　　  alert("GET通信を開始します");
+
+  　　   const testResponse =
+   　　  await fetch(testUrl);
+
+    　　 alert("GET通信が完了しました");
         // --------------------------------------------------
         // Overpass APIへアクセス
         // --------------------------------------------------

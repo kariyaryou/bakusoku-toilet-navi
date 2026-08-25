@@ -213,16 +213,40 @@ function successGPS(position) {
 // 🔎 7. 周辺施設を検索
 // ==========================================================================
 
-async function searchNearbyToilets(
-    userLat,
-    userLng
-) {
+async function searchNearbyToilets(userLat, userLng) {
 
-    // 現在地を検索条件に入れる
-    const query =
-        TOILET_QUERY
-            .replace(/USER_LAT/g, userLat)
-            .replace(/USER_LNG/g, userLng);
+    // 検索する施設
+    // 🚻 公衆トイレ
+    // 🏪 コンビニ
+    // 🛒 スーパー
+    // 💊 薬局
+    // 🏬 ショッピングモール
+    // 🚉 駅
+    // 🏞️ 公園
+
+    const query = `
+[out:json][timeout:25];
+
+(
+  nwr["amenity"="toilets"](around:1000,${userLat},${userLng});
+
+  nwr["shop"="convenience"](around:1000,${userLat},${userLng});
+
+  nwr["shop"="supermarket"](around:1000,${userLat},${userLng});
+
+  nwr["amenity"="pharmacy"](around:1000,${userLat},${userLng});
+
+  nwr["shop"="mall"](around:1000,${userLat},${userLng});
+
+  nwr["shop"="department_store"](around:1000,${userLat},${userLng});
+
+  nwr["railway"="station"](around:1000,${userLat},${userLng});
+
+  nwr["leisure"="park"](around:1000,${userLat},${userLng});
+);
+
+out center;
+`;
 
 
     try {
@@ -234,33 +258,43 @@ async function searchNearbyToilets(
             "#3498db";
 
 
-        // Overpass APIへ問い合わせ
-        const response =
-            await fetch(
-                "https://overpass-api.de/api/interpreter",
-                {
-                    method: "POST",
-                    body: query
-                }
-            );
+        // Overpass APIへ送信
+        const response = await fetch(
+            "https://overpass-api.de/api/interpreter",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    "data=" +
+                    encodeURIComponent(query)
+            }
+        );
 
 
+        // API通信に失敗した場合
         if (!response.ok) {
 
             throw new Error(
-                "Overpass APIへの接続に失敗しました"
+                "Overpass API HTTPエラー: " +
+                response.status
             );
 
         }
 
 
+        // JSONに変換
         const data =
             await response.json();
 
 
         console.log(
-            "検索結果:",
-            data.elements
+            "Overpass API検索結果:",
+            data
         );
 
 
@@ -275,7 +309,7 @@ async function searchNearbyToilets(
     } catch (error) {
 
         console.error(
-            "トイレ検索エラー:",
+            "周辺施設検索エラー:",
             error
         );
 

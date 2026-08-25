@@ -35,7 +35,7 @@ if (navigator.geolocation) {
     navigator.geolocation.watchPosition(successGPS, errorGPS, {
         enableHighAccuracy: true, // 高精度なGPSを要求（スマホ向け）
         maximumAge: 0,            // キャッシュを使わず常に最新の情報を取得
-        timeout: 5000             // 5秒応答がなければタイムアウト
+        timeout: 20000             // 5秒応答がなければタイムアウト
     });
 } else {
     alertBadge.textContent = "❌ GPS非対応のブラウザです";
@@ -89,8 +89,21 @@ function successGPS(position) {
 // 🔴 GPSの取得に失敗したとき（屋内や権限拒否など）の処理
 function errorGPS(error) {
     console.error("GPSエラー:", error);
-    alertBadge.textContent = "⚠️ GPS信号を探しています...";
-    alertBadge.style.backgroundColor = "#f39c12";
+
+    let message = "";
+
+    if (error.code === 1) {
+        message = "❌ 位置情報の使用が許可されていません";
+    } else if (error.code === 2) {
+        message = "❌ 現在地を取得できません";
+    } else if (error.code === 3) {
+        message = "⚠️ GPS取得がタイムアウトしました";
+    } else {
+        message = "⚠️ GPSでエラーが発生しました";
+    }
+
+    alertBadge.textContent = message;
+    alertBadge.style.backgroundColor = "#e67e22";
 }
 
 // --- 📐 計算用サブ関数：2点間の距離を求める（ヒュベニの公式） ---

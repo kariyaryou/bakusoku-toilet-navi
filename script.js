@@ -160,7 +160,8 @@ function successGPS(position) {
 
     const userLng =
         position.coords.longitude;
-
+    
+　　searchNearbyToilets(userLat, userLng);
 
     console.log(
         "現在地:",

@@ -278,6 +278,11 @@ out center;
 `;
 
     try {
+        const controller = new AbortController();
+ 
+        const timeoutId = setTimeout(() => {
+        controller.abort();
+        }, 10000);
         // --------------------------------------------------
         // 検索中表示
         // --------------------------------------------------
@@ -303,6 +308,7 @@ out center;
                         encodeURIComponent(query)
                 }
             );
+            clearTimeout(timeoutId);
         // --------------------------------------------------
         // HTTPエラー確認
         // --------------------------------------------------

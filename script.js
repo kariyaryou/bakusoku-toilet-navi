@@ -290,10 +290,10 @@ out center;
 
 
         // JSONに変換
-        const data =
-            await response.json();
+        const data = await response.json();
 
-
+        alert("検索結果：" + data.elements.length + "件");
+        
         console.log(
             "Overpass API検索結果:",
             data

@@ -8,10 +8,6 @@ export default async function handler(req, res) {
         const lng =
             Number(req.query.lng);
 
-        // ===============================
-        // 緯度・経度チェック
-        // ===============================
-
         if (
             !Number.isFinite(lat) ||
             !Number.isFinite(lng)
@@ -23,34 +19,35 @@ export default async function handler(req, res) {
             });
         }
 
-        // ===============================
-        // 検索範囲
-        // ===============================
+        // 検索範囲を1kmから500mに縮小
+        const radius = 500;
 
-        const radius = 1000;
-
-        // ===============================
-        // 使用するOverpass
-        // ===============================
-
+        // 日本向けOverpass
         const OVERPASS_URL =
-            "https://overpass.private.coffee/api/interpreter";
+            "https://overpass.osm.jp/api/interpreter";
 
-        // ===============================
-        // ① 公衆トイレを検索
-        // ===============================
+        // =====================================================
+        // 公衆トイレを検索
+        // =====================================================
 
-        const toiletQuery = `
-[out:json][timeout:15];
-nwr(
-    around:${radius},
-    ${lat},
-    ${lng}
-)["amenity"="toilets"];
+        const query = `
+[out:json][timeout:10];
+
+(
+    node["amenity"="toilets"](around:${radius},${lat},${lng});
+    way["amenity"="toilets"](around:${radius},${lat},${lng});
+);
+
 out center tags;
 `;
 
-        let response =
+        console.log(
+            "Overpass検索開始",
+            lat,
+            lng
+        );
+
+        const response =
             await fetch(
                 OVERPASS_URL,
                 {
@@ -58,26 +55,31 @@ out center tags;
                     headers: {
                         "Content-Type":
                             "application/x-www-form-urlencoded",
+
                         "User-Agent":
                             "BakusokuToiletNavi/1.0"
                     },
+
                     body:
                         "data=" +
-                        encodeURIComponent(
-                            toiletQuery
-                        )
+                        encodeURIComponent(query)
                 }
             );
 
-        // ===============================
-        // エラー
-        // ===============================
+        console.log(
+            "Overpassステータス:",
+            response.status
+        );
 
         if (!response.ok) {
 
+            const errorText =
+                await response.text();
+
             console.error(
-                "Overpass toilet error:",
-                response.status
+                "Overpassエラー:",
+                response.status,
+                errorText
             );
 
             throw new Error(
@@ -85,130 +87,81 @@ out center tags;
             );
         }
 
-        let data =
+        const data =
             await response.json();
 
-        // ===============================
-        // 公衆トイレ取得
-        // ===============================
+        console.log(
+            "Overpass結果:",
+            data.elements?.length || 0
+        );
 
-        let facilities =
-            convertFacilities(
-                data.elements || []
-            );
+        // =====================================================
+        // 施設データ変換
+        // =====================================================
 
-        // ===============================
-        // 公衆トイレがなければ
-        // 他の施設を検索
-        // ===============================
+        const facilities =
+            (data.elements || [])
+                .map(
+                    (element) => {
 
-        if (
-            facilities.length === 0
-        ) {
+                        let facilityLat =
+                            element.lat;
 
-            const facilityQuery = `
-[out:json][timeout:15];
-(
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["shop"="convenience"];
+                        let facilityLng =
+                            element.lon;
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["shop"="supermarket"];
+                        if (
+                            element.center
+                        ) {
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["shop"="chemist"];
+                            facilityLat =
+                                element.center.lat;
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["amenity"="pharmacy"];
+                            facilityLng =
+                                element.center.lon;
+                        }
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["shop"="mall"];
+                        if (
+                            typeof facilityLat !==
+                                "number" ||
+                            typeof facilityLng !==
+                                "number"
+                        ) {
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["shop"="department_store"];
+                            return null;
+                        }
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["railway"="station"];
+                        const tags =
+                            element.tags || {};
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["public_transport"="station"];
+                        return {
 
-    nwr(
-        around:${radius},
-        ${lat},
-        ${lng}
-    )["leisure"="park"];
-);
-out center tags;
-`;
+                            id:
+                                element.id,
 
-            response =
-                await fetch(
-                    OVERPASS_URL,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type":
-                                "application/x-www-form-urlencoded",
-                            "User-Agent":
-                                "BakusokuToiletNavi/1.0"
-                        },
-                        body:
-                            "data=" +
-                            encodeURIComponent(
-                                facilityQuery
-                            )
+                            name:
+                                tags.name ||
+                                "公衆トイレ",
+
+                            type:
+                                "公衆トイレ",
+
+                            lat:
+                                facilityLat,
+
+                            lng:
+                                facilityLng
+                        };
                     }
+                )
+                .filter(
+                    (facility) =>
+                        facility !== null
                 );
 
-            if (!response.ok) {
-
-                console.error(
-                    "Overpass facility error:",
-                    response.status
-                );
-
-                throw new Error(
-                    `Overpass API error: ${response.status}`
-                );
-            }
-
-            data =
-                await response.json();
-
-            facilities =
-                convertFacilities(
-                    data.elements || []
-                );
-        }
-
-        // ===============================
-        // 結果を返す
-        // ===============================
+        // =====================================================
+        // 結果
+        // =====================================================
 
         return res.status(200).json({
 
@@ -234,175 +187,9 @@ out center tags;
             success: false,
 
             error:
+                error.message ||
                 "周辺施設の検索に失敗しました"
 
         });
     }
-}
-
-// ==========================================================================
-// 施設データ変換
-// ==========================================================================
-
-function convertFacilities(
-    elements
-) {
-
-    return elements
-
-        .map(
-            (element) => {
-
-                let facilityLat =
-                    element.lat;
-
-                let facilityLng =
-                    element.lon;
-
-                // ===============================
-                // way / relation
-                // ===============================
-
-                if (
-                    element.center
-                ) {
-
-                    facilityLat =
-                        element.center.lat;
-
-                    facilityLng =
-                        element.center.lon;
-                }
-
-                // ===============================
-                // 座標がない場合
-                // ===============================
-
-                if (
-                    typeof facilityLat !==
-                    "number" ||
-                    typeof facilityLng !==
-                    "number"
-                ) {
-
-                    return null;
-                }
-
-                const tags =
-                    element.tags || {};
-
-                // ===============================
-                // 施設タイプ
-                // ===============================
-
-                let type =
-                    "施設";
-
-                if (
-                    tags.amenity ===
-                    "toilets"
-                ) {
-
-                    type =
-                        "公衆トイレ";
-
-                } else if (
-                    tags.shop ===
-                    "convenience"
-                ) {
-
-                    type =
-                        "コンビニ";
-
-                } else if (
-                    tags.shop ===
-                    "supermarket"
-                ) {
-
-                    type =
-                        "スーパー";
-
-                } else if (
-                    tags.shop ===
-                    "chemist"
-                ) {
-
-                    type =
-                        "ドラッグストア";
-
-                } else if (
-                    tags.amenity ===
-                    "pharmacy"
-                ) {
-
-                    type =
-                        "薬局";
-
-                } else if (
-                    tags.shop ===
-                    "mall"
-                ) {
-
-                    type =
-                        "ショッピングモール";
-
-                } else if (
-                    tags.shop ===
-                    "department_store"
-                ) {
-
-                    type =
-                        "百貨店";
-
-                } else if (
-                    tags.railway ===
-                    "station" ||
-                    tags.public_transport ===
-                    "station"
-                ) {
-
-                    type =
-                        "駅";
-
-                } else if (
-                    tags.leisure ===
-                    "park"
-                ) {
-
-                    type =
-                        "公園";
-                }
-
-                // ===============================
-                // 施設名
-                // ===============================
-
-                const name =
-                    tags.name ||
-                    type;
-
-                return {
-
-                    id:
-                        element.id,
-
-                    name:
-                        name,
-
-                    type:
-                        type,
-
-                    lat:
-                        facilityLat,
-
-                    lng:
-                        facilityLng
-                };
-            }
-        )
-
-        .filter(
-            (facility) =>
-                facility !== null
-        );
 }

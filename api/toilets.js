@@ -19,16 +19,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 検索範囲を1kmから500mに縮小
         const radius = 500;
-
-        // 日本向けOverpass
-        const OVERPASS_URL =
-            "https://overpass.osm.jp/api/interpreter";
-
-        // =====================================================
-        // 公衆トイレを検索
-        // =====================================================
 
         const query = `
 [out:json][timeout:10];
@@ -41,139 +32,195 @@ export default async function handler(req, res) {
 out center tags;
 `;
 
-        console.log(
-            "Overpass検索開始",
-            lat,
-            lng
-        );
-
-        const response =
-            await fetch(
-                OVERPASS_URL,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type":
-                            "application/x-www-form-urlencoded",
-
-                        "User-Agent":
-                            "BakusokuToiletNavi/1.0"
-                    },
-
-                    body:
-                        "data=" +
-                        encodeURIComponent(query)
-                }
-            );
-
-        console.log(
-            "Overpassステータス:",
-            response.status
-        );
-
-        if (!response.ok) {
-
-            const errorText =
-                await response.text();
-
-            console.error(
-                "Overpassエラー:",
-                response.status,
-                errorText
-            );
-
-            throw new Error(
-                `Overpass API error: ${response.status}`
-            );
-        }
-
-        const data =
-            await response.json();
-
-        console.log(
-            "Overpass結果:",
-            data.elements?.length || 0
-        );
-
         // =====================================================
-        // 施設データ変換
+        // Overpass候補
         // =====================================================
 
-        const facilities =
-            (data.elements || [])
-                .map(
-                    (element) => {
+        const endpoints = [
 
-                        let facilityLat =
-                            element.lat;
+            "https://overpass.private.coffee/api/interpreter",
 
-                        let facilityLng =
-                            element.lon;
+            "https://overpass-api.de/api/interpreter"
 
-                        if (
-                            element.center
-                        ) {
+        ];
 
-                            facilityLat =
-                                element.center.lat;
+        let lastError = null;
 
-                            facilityLng =
-                                element.center.lon;
-                        }
+        // =====================================================
+        // Overpassを順番に試す
+        // =====================================================
 
-                        if (
-                            typeof facilityLat !==
-                                "number" ||
-                            typeof facilityLng !==
-                                "number"
-                        ) {
+        for (
+            const endpoint of endpoints
+        ) {
 
-                            return null;
-                        }
+            try {
 
-                        const tags =
-                            element.tags || {};
-
-                        return {
-
-                            id:
-                                element.id,
-
-                            name:
-                                tags.name ||
-                                "公衆トイレ",
-
-                            type:
-                                "公衆トイレ",
-
-                            lat:
-                                facilityLat,
-
-                            lng:
-                                facilityLng
-                        };
-                    }
-                )
-                .filter(
-                    (facility) =>
-                        facility !== null
+                console.log(
+                    "Overpass接続開始:",
+                    endpoint
                 );
 
+                const response =
+                    await fetch(
+                        endpoint,
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/x-www-form-urlencoded",
+
+                                "User-Agent":
+                                    "BakusokuToiletNavi/1.0"
+                            },
+
+                            body:
+                                "data=" +
+                                encodeURIComponent(query),
+
+                            signal:
+                                AbortSignal.timeout(12000)
+                        }
+                    );
+
+                console.log(
+                    "Overpassステータス:",
+                    endpoint,
+                    response.status
+                );
+
+                if (!response.ok) {
+
+                    const errorText =
+                        await response.text();
+
+                    console.error(
+                        "Overpass HTTPエラー:",
+                        endpoint,
+                        response.status,
+                        errorText
+                    );
+
+                    lastError =
+                        new Error(
+                            `Overpass ${response.status}`
+                        );
+
+                    continue;
+                }
+
+                const data =
+                    await response.json();
+
+                console.log(
+                    "Overpass成功:",
+                    endpoint,
+                    data.elements?.length || 0
+                );
+
+                // =================================================
+                // 施設データ変換
+                // =================================================
+
+                const facilities =
+                    (data.elements || [])
+                        .map(
+                            (element) => {
+
+                                let facilityLat =
+                                    element.lat;
+
+                                let facilityLng =
+                                    element.lon;
+
+                                if (
+                                    element.center
+                                ) {
+
+                                    facilityLat =
+                                        element.center.lat;
+
+                                    facilityLng =
+                                        element.center.lon;
+                                }
+
+                                if (
+                                    typeof facilityLat !==
+                                        "number" ||
+                                    typeof facilityLng !==
+                                        "number"
+                                ) {
+
+                                    return null;
+                                }
+
+                                const tags =
+                                    element.tags || {};
+
+                                return {
+
+                                    id:
+                                        element.id,
+
+                                    name:
+                                        tags.name ||
+                                        "公衆トイレ",
+
+                                    type:
+                                        "公衆トイレ",
+
+                                    lat:
+                                        facilityLat,
+
+                                    lng:
+                                        facilityLng
+                                };
+                            }
+                        )
+                        .filter(
+                            (facility) =>
+                                facility !== null
+                        );
+
+                // =================================================
+                // 成功
+                // =================================================
+
+                return res.status(200).json({
+
+                    success: true,
+
+                    count:
+                        facilities.length,
+
+                    facilities:
+                        facilities
+
+                });
+
+            } catch (error) {
+
+                console.error(
+                    "Overpass接続失敗:",
+                    endpoint,
+                    error.message
+                );
+
+                lastError =
+                    error;
+
+            }
+        }
+
         // =====================================================
-        // 結果
+        // 全サーバー失敗
         // =====================================================
 
-        return res.status(200).json({
-
-            success: true,
-
-            count:
-                facilities.length,
-
-            facilities:
-                facilities
-
-        });
+        throw new Error(
+            lastError?.message ||
+            "Overpass APIに接続できませんでした"
+        );
 
     } catch (error) {
 

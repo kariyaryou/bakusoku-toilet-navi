@@ -15,6 +15,7 @@ const map = L.map("map").setView(
 
 
 // OpenStreetMap表示
+
 L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
@@ -29,6 +30,9 @@ L.tileLayer(
 
 let currentMarker;
 let toiletMarker;
+
+// 周辺施設検索を1回だけ行う
+let hasSearched = false;
 
 
 // ===============================
@@ -131,12 +135,19 @@ async function successGPS(position) {
 
     // ===============================
     // 周辺施設検索
+    // 最初の1回だけ実行
     // ===============================
 
-    await searchNearbyToilets(
-        userLat,
-        userLng
-    );
+    if (!hasSearched) {
+
+        hasSearched = true;
+
+        await searchNearbyToilets(
+            userLat,
+            userLng
+        );
+
+    }
 }
 
 
@@ -162,6 +173,7 @@ async function searchNearbyToilets(
 
 
         // Vercel中継API
+
         const response =
             await fetch(
                 `/api/toilets?lat=${userLat}&lng=${userLng}`
@@ -179,7 +191,6 @@ async function searchNearbyToilets(
 
         const data =
             await response.json();
-
 
         console.log(
             "施設検索結果:",
@@ -359,7 +370,6 @@ function showNearestFacility(
             ".target-place"
         );
 
-
     targetPlace.textContent =
         `📍 ${facility.name}`;
 
@@ -491,6 +501,7 @@ function calculateBearing(
     const lat2Rad =
         lat2 * Math.PI / 180;
 
+
     const dLng =
         (lng2 - lng1)
         * Math.PI
@@ -507,7 +518,6 @@ function calculateBearing(
         Math.cos(lat1Rad)
         *
         Math.sin(lat2Rad)
-
         -
 
         Math.sin(lat1Rad)

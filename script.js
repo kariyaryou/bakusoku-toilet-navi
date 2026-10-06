@@ -28,8 +28,25 @@ L.tileLayer(
 let currentMarker;
 let toiletMarker;
 
-// 周辺施設検索を1回だけ行う
+// ===============================
+// 最寄りトイレ保存
+// ===============================
+
+// 一度検索したトイレを保存する
+// GPSが更新されてもOverpassへ再検索しない
+let nearestFacility = null;
+
+// ===============================
+// 初回検索フラグ
+// ===============================
+
 let hasSearched = false;
+
+// ===============================
+// 初回地図移動フラグ
+// ===============================
+
+let hasMovedToDestination = false;
 
 // ===============================
 // HTML取得
@@ -72,9 +89,9 @@ if (navigator.geolocation) {
         "❌ GPSに対応していません";
 }
 
-// ===============================
-// GPS成功
-// ===============================
+// ==========================================================================
+// 📍 GPS成功
+// ==========================================================================
 
 async function successGPS(position) {
 
@@ -87,30 +104,22 @@ async function successGPS(position) {
     console.log("現在地");
     console.log("緯度:", userLat);
     console.log("経度:", userLng);
-    console.log("GPS精度:", position.coords.accuracy, "m");
-
-    // ===============================
-    // 地図を現在地へ移動
-    // ===============================
-
-    map.setView(
-        [userLat, userLng],
-        18
+    console.log(
+        "GPS精度:",
+        position.coords.accuracy,
+        "m"
     );
 
     // ===============================
-    // 前の現在地マーカー削除
+    // 現在地マーカー更新
     // ===============================
 
     if (currentMarker) {
 
-        map.removeLayer(currentMarker);
-
+        map.removeLayer(
+            currentMarker
+        );
     }
-
-    // ===============================
-    // 現在地表示
-    // ===============================
 
     currentMarker =
         L.marker([
@@ -123,19 +132,46 @@ async function successGPS(position) {
         );
 
     // ===============================
-    // 周辺施設検索
-    // 最初の1回だけ
+    // まだ目的地がない場合
     // ===============================
 
-    if (!hasSearched) {
+    if (!nearestFacility) {
 
-        hasSearched = true;
+        // 最初だけ現在地を表示
+        if (!hasSearched) {
 
-        await searchNearbyToilets(
-            userLat,
-            userLng
-        );
+            map.setView(
+                [userLat, userLng],
+                18
+            );
+        }
+
+        // ===============================
+        // 周辺施設検索
+        // 最初の1回だけ
+        // ===============================
+
+        if (!hasSearched) {
+
+            hasSearched = true;
+
+            await searchNearbyToilets(
+                userLat,
+                userLng
+            );
+        }
+
+        return;
     }
+
+    // ===============================
+    // 目的地が決まった後
+    // ===============================
+
+    updateNavigation(
+        userLat,
+        userLng
+    );
 }
 
 // ==========================================================================
@@ -158,6 +194,10 @@ async function searchNearbyToilets(
         console.log(
             "周辺施設検索開始"
         );
+
+        // ===============================
+        // Vercel API
+        // ===============================
 
         const response =
             await fetch(
@@ -184,6 +224,10 @@ async function searchNearbyToilets(
             data
         );
 
+        // ===============================
+        // 施設がない場合
+        // ===============================
+
         if (
             !data.success ||
             !data.facilities ||
@@ -203,8 +247,11 @@ async function searchNearbyToilets(
         // 一番近い施設を探す
         // ===============================
 
-        let nearestFacility = null;
-        let nearestDistance = Infinity;
+        let closestFacility =
+            null;
+
+        let closestDistance =
+            Infinity;
 
         data.facilities.forEach(
             (facility) => {
@@ -222,25 +269,32 @@ async function searchNearbyToilets(
 
                 if (
                     distance <
-                    nearestDistance
+                    closestDistance
                 ) {
 
-                    nearestDistance =
+                    closestDistance =
                         distance;
 
-                    nearestFacility =
+                    closestFacility =
                         facility;
                 }
             }
         );
 
+        // ===============================
+        // 最寄りトイレを保存
+        // ===============================
+
+        nearestFacility =
+            closestFacility;
+
         console.log(
-            "最寄り施設:",
+            "最寄りトイレ:",
             nearestFacility
         );
 
         // ===============================
-        // 最寄り施設を表示
+        // 最寄りトイレを表示
         // ===============================
 
         showNearestFacility(
@@ -300,14 +354,83 @@ function showNearestFacility(
         );
 
     // ===============================
+    // 現在地と目的地が両方見えるようにする
+    // ===============================
+
+    const bounds =
+        L.latLngBounds(
+            [
+                userLat,
+                userLng
+            ],
+            [
+                facility.lat,
+                facility.lng
+            ]
+        );
+
+    map.fitBounds(
+        bounds,
+        {
+            padding: [
+                50,
+                50
+            ],
+            maxZoom: 18
+        }
+    );
+
+    hasMovedToDestination =
+        true;
+
+    // ===============================
+    // 距離・方向を更新
+    // ===============================
+
+    updateNavigation(
+        userLat,
+        userLng
+    );
+}
+
+// ==========================================================================
+// 🧭 ナビゲーション更新
+// ==========================================================================
+
+function updateNavigation(
+    userLat,
+    userLng
+) {
+
+    if (!nearestFacility) {
+        return;
+    }
+
+    // ===============================
+    // 距離を再計算
+    // ===============================
+
+    const distance =
+        calculateDistance(
+            userLat,
+            userLng,
+            nearestFacility.lat,
+            nearestFacility.lng
+        );
+
+    // 保存している距離も更新
+    nearestFacility.distance =
+        distance;
+
+    // ===============================
     // 距離表示
     // ===============================
 
     distanceElement.innerHTML =
-        `直進 ${Math.round(facility.distance)} <span>m</span>`;
+        `直進 ${Math.round(distance)} <span>m</span>`;
 
     // ===============================
-    // 到着時間
+    // 徒歩時間
     // ===============================
 
     const walkingSpeed =
@@ -317,7 +440,7 @@ function showNearestFacility(
         Math.max(
             1,
             Math.ceil(
-                facility.distance /
+                distance /
                 walkingSpeed
             )
         );
@@ -326,7 +449,7 @@ function showNearestFacility(
         `徒歩 約${minutes}分`;
 
     // ===============================
-    // 施設名表示
+    // 施設名
     // ===============================
 
     const targetPlace =
@@ -337,14 +460,14 @@ function showNearestFacility(
     if (targetPlace) {
 
         targetPlace.textContent =
-            `📍 ${facility.name}`;
+            `📍 ${nearestFacility.name}`;
     }
 
     // ===============================
     // 状態表示
     // ===============================
 
-    if (facility.distance < 10) {
+    if (distance < 10) {
 
         alertBadge.textContent =
             "🎉 目的地に到着しました";
@@ -352,7 +475,7 @@ function showNearestFacility(
         alertBadge.style.backgroundColor =
             "#16a34a";
 
-    } else if (facility.distance < 50) {
+    } else if (distance < 50) {
 
         alertBadge.textContent =
             "🚻 まもなく到着します";
@@ -363,22 +486,22 @@ function showNearestFacility(
     } else {
 
         alertBadge.textContent =
-            `🟢 ${facility.type}を案内中`;
+            `🟢 ${nearestFacility.type}を案内中`;
 
         alertBadge.style.backgroundColor =
             "#2563eb";
     }
 
     // ===============================
-    // 方角計算
+    // 目的地の方向
     // ===============================
 
     const bearing =
         calculateBearing(
             userLat,
             userLng,
-            facility.lat,
-            facility.lng
+            nearestFacility.lat,
+            nearestFacility.lng
         );
 
     setArrowByBearing(

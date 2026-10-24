@@ -1,18 +1,18 @@
-// ==========================================================================
-// 🚻 爆速トイレナビ
-// IBS緊急回避システム JavaScript
-// ==========================================================================
 
-// ===============================
-// 地図設定
-// ===============================
+/* ==========================================================
+   🚻 爆速トイレナビ
+   IBS緊急回避システム
+   GPS・周辺施設検索・徒歩ルート案内
+   ========================================================== */
+
+// ==============================
+// 1. 地図設定
+// ==============================
 
 const map = L.map("map").setView(
     [35.1796, 136.9066],
     16
 );
-
-// OpenStreetMap表示
 
 L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -21,36 +21,37 @@ L.tileLayer(
     }
 ).addTo(map);
 
-// ===============================
-// マーカー保存用
-// ===============================
+// ==============================
+// 2. 状態を保存する変数
+// ==============================
 
-let currentMarker;
-let toiletMarker;
+let currentMarker = null;
+let toiletMarker = null;
+let routeLine = null;
 
-// ===============================
-// 最寄りトイレ保存
-// ===============================
-
-// 一度検索したトイレを保存する
-// GPSが更新されてもOverpassへ再検索しない
 let nearestFacility = null;
 
-// ===============================
-// 初回検索フラグ
-// ===============================
-
 let hasSearched = false;
-
-// ===============================
-// 初回地図移動フラグ
-// ===============================
-
 let hasMovedToDestination = false;
 
-// ===============================
-// HTML取得
-// ===============================
+let latestPosition = null;
+
+let routeRequestInProgress = false;
+let lastRouteRequestTime = 0;
+let lastRouteStart = null;
+
+// ルートの再取得間隔
+const ROUTE_UPDATE_INTERVAL = 15000;
+
+// 現在地が前回の取得位置からこの距離以上動いたら再取得
+const ROUTE_UPDATE_DISTANCE = 25;
+
+// 徒歩速度（メートル/分）
+const WALKING_SPEED = 80;
+
+// ==============================
+// 3. HTML要素を取得
+// ==============================
 
 const arrowElement =
     document.getElementById("direction-arrow");
@@ -64,238 +65,208 @@ const alertBadge =
 const arrivalElement =
     document.getElementById("arrival-time");
 
+const targetPlace =
+    document.querySelector(".target-place");
+
 const stars =
     document.querySelectorAll(".star-input");
 
-// ===============================
-// GPS開始
-// ===============================
+// 案内文を表示する要素
+// HTMLに専用要素がなくても自動で作成する
+let guidanceElement =
+    document.getElementById("route-guidance");
 
-if (navigator.geolocation) {
+if (!guidanceElement) {
+    const mapContainer = document.getElementById("map");
 
+    if (mapContainer) {
+        guidanceElement = document.createElement("div");
+
+        guidanceElement.id = "route-guidance";
+
+        guidanceElement.style.cssText = `
+            position: absolute;
+            z-index: 1000;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 32px);
+            max-width: 360px;
+            box-sizing: border-box;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: #ffffff;
+            color: #183b4e;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.18);
+            font-size: 15px;
+            line-height: 1.6;
+            pointer-events: none;
+        `;
+
+        mapContainer.appendChild(guidanceElement);
+    }
+}
+
+// ==============================
+// 4. 表示を安全に更新する関数
+// ==============================
+
+function setStatus(message, color = "#2563eb") {
+    if (alertBadge) {
+        alertBadge.textContent = message;
+        alertBadge.style.backgroundColor = color;
+    }
+}
+
+function setGuidance(message) {
+    if (guidanceElement) {
+        guidanceElement.textContent = message;
+    }
+}
+
+// ==============================
+// 5. GPSを開始
+// ==============================
+
+if ("geolocation" in navigator) {
     navigator.geolocation.watchPosition(
         successGPS,
         errorGPS,
         {
             enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000
+            maximumAge: 3000,
+            timeout: 15000
         }
     );
-
 } else {
-
-    alertBadge.textContent =
-        "❌ GPSに対応していません";
+    setStatus("❌ この端末はGPSに対応していません", "#ef4444");
 }
 
-// ==========================================================================
-// 📍 GPS成功
-// ==========================================================================
+// ==============================
+// 6. GPS取得成功
+// ==============================
 
 async function successGPS(position) {
+    const userLat = position.coords.latitude;
+    const userLng = position.coords.longitude;
 
-    const userLat =
-        position.coords.latitude;
+    latestPosition = {
+        lat: userLat,
+        lng: userLng
+    };
 
-    const userLng =
-        position.coords.longitude;
+    console.log("現在地:", userLat, userLng);
+    console.log("GPS精度:", position.coords.accuracy, "m");
 
-    console.log("現在地");
-    console.log("緯度:", userLat);
-    console.log("経度:", userLng);
-    console.log(
-        "GPS精度:",
-        position.coords.accuracy,
-        "m"
-    );
-
-    // ===============================
-    // 現在地マーカー更新
-    // ===============================
-
+    // 現在地マーカーを更新
     if (currentMarker) {
-
-        map.removeLayer(
-            currentMarker
-        );
+        currentMarker.setLatLng([userLat, userLng]);
+    } else {
+        currentMarker = L.marker([userLat, userLng])
+            .addTo(map)
+            .bindPopup("📍 現在地");
     }
 
-    currentMarker =
-        L.marker([
-            userLat,
-            userLng
-        ])
-        .addTo(map)
-        .bindPopup(
-            "📍 現在地"
-        );
-
-    // ===============================
-    // まだ目的地がない場合
-    // ===============================
-
+    // まだ目的地が決まっていない場合
     if (!nearestFacility) {
-
-        // 最初だけ現在地を表示
         if (!hasSearched) {
-
-            map.setView(
-                [userLat, userLng],
-                18
-            );
-        }
-
-        // ===============================
-        // 周辺施設検索
-        // 最初の1回だけ
-        // ===============================
-
-        if (!hasSearched) {
+            map.setView([userLat, userLng], 18);
 
             hasSearched = true;
 
-            await searchNearbyToilets(
-                userLat,
-                userLng
-            );
+            await searchNearbyToilets(userLat, userLng);
         }
 
         return;
     }
 
-    // ===============================
-    // 目的地が決まった後
-    // ===============================
+    // 目的地が決まっている場合は案内を更新
+    updateNavigation(userLat, userLng);
 
-    updateNavigation(
-        userLat,
-        userLng
-    );
+    // 徒歩ルートの再取得が必要か確認
+    requestRouteIfNeeded(userLat, userLng);
 }
 
-// ==========================================================================
-// 🔎 周辺施設検索
-// ==========================================================================
+// ==============================
+// 7. 周辺施設を検索
+// ==============================
 
-async function searchNearbyToilets(
-    userLat,
-    userLng
-) {
-
-    alertBadge.textContent =
-        "🔎 周辺施設を検索中...";
-
-    alertBadge.style.backgroundColor =
-        "#f59e0b";
+async function searchNearbyToilets(userLat, userLng) {
+    setStatus("🔎 周辺施設を検索中...", "#f59e0b");
+    setGuidance("近くの施設を探しています...");
 
     try {
+        const url =
+            `/api/toilets?lat=${encodeURIComponent(userLat)}` +
+            `&lng=${encodeURIComponent(userLng)}`;
 
-        console.log(
-            "周辺施設検索開始"
-        );
+        const response = await fetch(url);
 
-        // ===============================
-        // Vercel API
-        // ===============================
+        console.log("施設APIステータス:", response.status);
 
-        const response =
-            await fetch(
-                `/api/toilets?lat=${encodeURIComponent(userLat)}&lng=${encodeURIComponent(userLng)}`
-            );
+        const data = await response.json();
 
-        console.log(
-            "APIステータス:",
-            response.status
-        );
+        console.log("施設検索結果:", data);
 
-        if (!response.ok) {
-
-            throw new Error(
-                `APIエラー: ${response.status}`
-            );
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `APIエラー: ${response.status}`);
         }
 
-        const data =
-            await response.json();
-
-        console.log(
-            "施設検索結果:",
-            data
-        );
-
-        // ===============================
-        // 施設がない場合
-        // ===============================
-
-        if (
-            !data.success ||
-            !data.facilities ||
-            data.facilities.length === 0
-        ) {
-
-            alertBadge.textContent =
-                "⚠️ 周辺施設が見つかりません";
-
-            alertBadge.style.backgroundColor =
-                "#f59e0b";
-
+        if (!Array.isArray(data.facilities) || data.facilities.length === 0) {
+            setStatus("⚠️ 周辺施設が見つかりません", "#f59e0b");
+            setGuidance("周辺に案内できる施設が見つかりませんでした。");
             return;
         }
 
-        // ===============================
-        // 一番近い施設を探す
-        // ===============================
+        // 有効な座標を持つ施設だけを候補にする
+        const validFacilities = data.facilities.filter((facility) => {
+            return (
+                Number.isFinite(Number(facility.lat)) &&
+                Number.isFinite(Number(facility.lng)) &&
+                Number(facility.lat) >= -90 &&
+                Number(facility.lat) <= 90 &&
+                Number(facility.lng) >= -180 &&
+                Number(facility.lng) <= 180
+            );
+        });
 
-        let closestFacility =
-            null;
+        if (validFacilities.length === 0) {
+            setStatus("⚠️ 有効な施設情報がありません", "#f59e0b");
+            return;
+        }
 
-        let closestDistance =
-            Infinity;
+        // 直線距離で最も近い施設を選択
+        // 徒歩ルートAPIができた後は、必要に応じて
+        // 実際の徒歩距離を使った選択に改善できる
+        let closestFacility = null;
+        let closestDistance = Infinity;
 
-        data.facilities.forEach(
-            (facility) => {
+        for (const facility of validFacilities) {
+            const distance = calculateDistance(
+                userLat,
+                userLng,
+                Number(facility.lat),
+                Number(facility.lng)
+            );
 
-                const distance =
-                    calculateDistance(
-                        userLat,
-                        userLng,
-                        facility.lat,
-                        facility.lng
-                    );
-
-                facility.distance =
-                    distance;
-
-                if (
-                    distance <
-                    closestDistance
-                ) {
-
-                    closestDistance =
-                        distance;
-
-                    closestFacility =
-                        facility;
-                }
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestFacility = {
+                    ...facility,
+                    lat: Number(facility.lat),
+                    lng: Number(facility.lng)
+                };
             }
-        );
+        }
 
-        // ===============================
-        // 最寄りトイレを保存
-        // ===============================
+        if (!closestFacility) {
+            setStatus("⚠️ 目的地を決められませんでした", "#f59e0b");
+            return;
+        }
 
-        nearestFacility =
-            closestFacility;
+        nearestFacility = closestFacility;
 
-        console.log(
-            "最寄りトイレ:",
-            nearestFacility
-        );
-
-        // ===============================
-        // 最寄りトイレを表示
-        // ===============================
+        console.log("選択した施設:", nearestFacility);
 
         showNearestFacility(
             userLat,
@@ -304,457 +275,449 @@ async function searchNearbyToilets(
         );
 
     } catch (error) {
+        console.error("周辺施設検索エラー:", error);
 
-        console.error(
-            "周辺施設検索エラー:",
-            error
+        setStatus(
+            "❌ 周辺施設の検索に失敗しました",
+            "#ef4444"
         );
 
-        alertBadge.textContent =
-            "❌ 周辺施設の検索に失敗しました";
+        setGuidance(
+            "施設を検索できませんでした。通信状況を確認してください。"
+        );
 
-        alertBadge.style.backgroundColor =
-            "#ef4444";
+        // 失敗時は次のGPS更新で再検索できるようにする
+        hasSearched = false;
     }
 }
 
-// ==========================================================================
-// 📍 最寄り施設を表示
-// ==========================================================================
+// ==============================
+// 8. 目的地を地図に表示
+// ==============================
 
-function showNearestFacility(
-    userLat,
-    userLng,
-    facility
-) {
-
-    // ===============================
-    // 以前の目的地マーカー削除
-    // ===============================
-
+function showNearestFacility(userLat, userLng, facility) {
     if (toiletMarker) {
-
-        map.removeLayer(
-            toiletMarker
-        );
+        map.removeLayer(toiletMarker);
     }
 
-    // ===============================
-    // 目的地マーカー
-    // ===============================
-
-    toiletMarker =
-        L.marker([
-            facility.lat,
-            facility.lng
-        ])
+    toiletMarker = L.marker([
+        facility.lat,
+        facility.lng
+    ])
         .addTo(map)
         .bindPopup(
-            `📍 ${facility.name}<br>${facility.type}`
+            `📍 ${escapeHTML(facility.name || "周辺施設")}`
         );
 
-    // ===============================
-    // 現在地と目的地が両方見えるようにする
-    // ===============================
-
-    const bounds =
-        L.latLngBounds(
-            [
-                userLat,
-                userLng
-            ],
-            [
-                facility.lat,
-                facility.lng
-            ]
-        );
-
-    map.fitBounds(
-        bounds,
-        {
-            padding: [
-                50,
-                50
-            ],
-            maxZoom: 18
-        }
+    const bounds = L.latLngBounds(
+        [userLat, userLng],
+        [facility.lat, facility.lng]
     );
 
-    hasMovedToDestination =
-        true;
+    map.fitBounds(bounds, {
+        padding: [50, 50],
+        maxZoom: 18
+    });
 
-    // ===============================
-    // 距離・方向を更新
-    // ===============================
+    hasMovedToDestination = true;
 
-    updateNavigation(
-        userLat,
-        userLng
-    );
+    updateNavigation(userLat, userLng);
+
+    // 目的地決定後に徒歩ルートを取得
+    requestRouteIfNeeded(userLat, userLng, true);
 }
 
-// ==========================================================================
-// 🧭 ナビゲーション更新
-// ==========================================================================
+// ==============================
+// 9. 徒歩ルート取得の必要性を確認
+// ==============================
 
-function updateNavigation(
-    userLat,
-    userLng
-) {
+function requestRouteIfNeeded(userLat, userLng, force = false) {
+    if (!nearestFacility || routeRequestInProgress) {
+        return;
+    }
 
+    const now = Date.now();
+
+    if (!force && now - lastRouteRequestTime < ROUTE_UPDATE_INTERVAL) {
+        return;
+    }
+
+    if (!force && lastRouteStart) {
+        const movedDistance = calculateDistance(
+            lastRouteStart.lat,
+            lastRouteStart.lng,
+            userLat,
+            userLng
+        );
+
+        if (movedDistance < ROUTE_UPDATE_DISTANCE) {
+            return;
+        }
+    }
+
+    getWalkingRoute(userLat, userLng);
+}
+
+// ==============================
+// 10. 徒歩ルートを取得
+// ==============================
+//
+// ここでは /api/route が次の形式を返す想定：
+//
+// {
+//   "success": true,
+//   "distance": 850,
+//   "duration": 720,
+//   "coordinates": [[緯度, 経度], ...],
+//   "instructions": [
+//     { "text": "右に曲がる", "distance": 100 }
+//   ]
+// }
+//
+// api/route.js は次の段階で作成する。
+// APIが未作成、または失敗した場合は、
+// 従来の直線距離・方向表示に切り替える。
+
+async function getWalkingRoute(userLat, userLng) {
     if (!nearestFacility) {
         return;
     }
 
-    // ===============================
-    // 距離を再計算
-    // ===============================
+    routeRequestInProgress = true;
+    lastRouteRequestTime = Date.now();
 
-    const distance =
-        calculateDistance(
-            userLat,
-            userLng,
-            nearestFacility.lat,
-            nearestFacility.lng
+    lastRouteStart = {
+        lat: userLat,
+        lng: userLng
+    };
+
+    try {
+        const params = new URLSearchParams({
+            startLat: String(userLat),
+            startLng: String(userLng),
+            endLat: String(nearestFacility.lat),
+            endLng: String(nearestFacility.lng)
+        });
+
+        const response = await fetch(`/api/route?${params.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`ルートAPIエラー: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (
+            !data.success ||
+            !Array.isArray(data.coordinates) ||
+            data.coordinates.length < 2
+        ) {
+            throw new Error("徒歩ルートのデータが正しくありません");
+        }
+
+        // APIから受け取った座標を検証
+        const coordinates = data.coordinates
+            .filter((point) => {
+                return (
+                    Array.isArray(point) &&
+                    point.length >= 2 &&
+                    Number.isFinite(Number(point[0])) &&
+                    Number.isFinite(Number(point[1])) &&
+                    Math.abs(Number(point[0])) <= 90 &&
+                    Math.abs(Number(point[1])) <= 180
+                );
+            })
+            .map((point) => [
+                Number(point[0]),
+                Number(point[1])
+            ]);
+
+        if (coordinates.length < 2) {
+            throw new Error("表示できるルート座標がありません");
+        }
+
+        // 以前のルート線を削除
+        if (routeLine) {
+            map.removeLayer(routeLine);
+        }
+
+        // 徒歩ルートを地図に描画
+        routeLine = L.polyline(coordinates, {
+            color: "#1677ff",
+            weight: 6,
+            opacity: 0.85,
+            lineCap: "round",
+            lineJoin: "round"
+        }).addTo(map);
+
+        // ルート距離・所要時間を表示
+        if (Number.isFinite(Number(data.distance))) {
+            const routeDistance = Number(data.distance);
+
+            if (distanceElement) {
+                distanceElement.innerHTML =
+                    `徒歩ルート ${Math.round(routeDistance)} <span>m</span>`;
+            }
+        }
+
+        if (Number.isFinite(Number(data.duration))) {
+            const minutes = Math.max(
+                1,
+                Math.ceil(Number(data.duration) / 60)
+            );
+
+            if (arrivalElement) {
+                arrivalElement.textContent = `徒歩 約${minutes}分`;
+            }
+        }
+
+        // 次に進む方向を表示
+        const instructions = Array.isArray(data.instructions)
+            ? data.instructions
+            : [];
+
+        if (instructions.length > 0) {
+            const firstInstruction = instructions[0];
+
+            const text =
+                firstInstruction.text ||
+                firstInstruction.instruction ||
+                "ルートに沿って進んでください";
+
+            const stepDistance = Number(firstInstruction.distance);
+
+            const distanceText = Number.isFinite(stepDistance)
+                ? `（約${Math.round(stepDistance)}m）`
+                : "";
+
+            setGuidance(`${text}${distanceText}`);
+        } else {
+            setGuidance("青い線に沿って進んでください");
+        }
+
+        console.log("徒歩ルート取得成功:", data);
+
+    } catch (error) {
+        console.warn(
+            "徒歩ルートを取得できません。直線案内に切り替えます。",
+            error
         );
 
-    // 保存している距離も更新
-    nearestFacility.distance =
-        distance;
+        // ルート取得に失敗しても従来の案内は維持
+        updateNavigation(userLat, userLng);
 
-    // ===============================
-    // 距離表示
-    // ===============================
-
-    distanceElement.innerHTML =
-        `直進 ${Math.round(distance)} <span>m</span>`;
-
-    // ===============================
-    // 徒歩時間
-    // ===============================
-
-    const walkingSpeed =
-        80;
-
-    const minutes =
-        Math.max(
-            1,
-            Math.ceil(
-                distance /
-                walkingSpeed
-            )
+        setGuidance(
+            "徒歩ルートを取得できません。矢印と距離を参考にしてください。"
         );
 
-    arrivalElement.textContent =
-        `徒歩 約${minutes}分`;
+    } finally {
+        routeRequestInProgress = false;
+    }
+}
 
-    // ===============================
-    // 施設名
-    // ===============================
+// ==============================
+// 11. ナビゲーション表示を更新
+// ==============================
 
-    const targetPlace =
-        document.querySelector(
-            ".target-place"
-        );
+function updateNavigation(userLat, userLng) {
+    if (!nearestFacility) {
+        return;
+    }
+
+    const distance = calculateDistance(
+        userLat,
+        userLng,
+        nearestFacility.lat,
+        nearestFacility.lng
+    );
+
+    nearestFacility.distance = distance;
+
+    // 直線距離を表示
+    // 徒歩ルート取得成功時はルート距離に置き換わる
+    if (distanceElement) {
+        distanceElement.innerHTML =
+            `直線距離 ${Math.round(distance)} <span>m</span>`;
+    }
+
+    const minutes = Math.max(
+        1,
+        Math.ceil(distance / WALKING_SPEED)
+    );
+
+    if (arrivalElement) {
+        arrivalElement.textContent = `徒歩 約${minutes}分`;
+    }
 
     if (targetPlace) {
-
         targetPlace.textContent =
-            `📍 ${nearestFacility.name}`;
+            `📍 ${nearestFacility.name || "周辺施設"}`;
     }
 
-    // ===============================
-    // 状態表示
-    // ===============================
-
+    // 到着状態
     if (distance < 10) {
-
-        alertBadge.textContent =
-            "🎉 目的地に到着しました";
-
-        alertBadge.style.backgroundColor =
-            "#16a34a";
+        setStatus("🎉 目的地に到着しました", "#16a34a");
+        setGuidance("目的地に到着した可能性があります。");
 
     } else if (distance < 50) {
-
-        alertBadge.textContent =
-            "🚻 まもなく到着します";
-
-        alertBadge.style.backgroundColor =
-            "#22c55e";
+        setStatus("🚻 まもなく到着します", "#22c55e");
 
     } else {
-
-        alertBadge.textContent =
-            `🟢 ${nearestFacility.type}を案内中`;
-
-        alertBadge.style.backgroundColor =
-            "#2563eb";
+        setStatus(
+            `🟢 ${nearestFacility.name || "施設"}を案内中`,
+            "#2563eb"
+        );
     }
 
-    // ===============================
-    // 目的地の方向
-    // ===============================
-
-    const bearing =
-        calculateBearing(
-            userLat,
-            userLng,
-            nearestFacility.lat,
-            nearestFacility.lng
-        );
-
-    setArrowByBearing(
-        bearing
+    // 目的地の方角を表示
+    const bearing = calculateBearing(
+        userLat,
+        userLng,
+        nearestFacility.lat,
+        nearestFacility.lng
     );
+
+    setArrowByBearing(bearing);
 }
 
-// ==========================================================================
-// 📏 2点間の距離計算
-// ==========================================================================
+// ==============================
+// 12. 2地点間の距離（メートル）
+// ==============================
 
-function calculateDistance(
-    lat1,
-    lng1,
-    lat2,
-    lng2
-) {
+function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
 
-    const R =
-        6371000;
+    const toRadians = (degrees) => degrees * Math.PI / 180;
 
-    const dLat =
-        (lat2 - lat1)
-        * Math.PI
-        / 180;
-
-    const dLng =
-        (lng2 - lng1)
-        * Math.PI
-        / 180;
+    const dLat = toRadians(lat2 - lat1);
+    const dLng = toRadians(lng2 - lng1);
 
     const a =
-        Math.sin(dLat / 2)
-        *
-        Math.sin(dLat / 2)
-        +
-        Math.cos(
-            lat1 * Math.PI / 180
-        )
-        *
-        Math.cos(
-            lat2 * Math.PI / 180
-        )
-        *
-        Math.sin(dLng / 2)
-        *
-        Math.sin(dLng / 2);
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLng / 2) ** 2;
 
-    const c =
-        2 *
-        Math.atan2(
-            Math.sqrt(a),
-            Math.sqrt(1 - a)
-        );
-
-    return R * c;
+    return R * 2 * Math.atan2(
+        Math.sqrt(a),
+        Math.sqrt(1 - a)
+    );
 }
 
-// ==========================================================================
-// 🧭 目的地の方向計算
-// ==========================================================================
+// ==============================
+// 13. 目的地の方角を計算
+// ==============================
 
-function calculateBearing(
-    lat1,
-    lng1,
-    lat2,
-    lng2
-) {
+function calculateBearing(lat1, lng1, lat2, lng2) {
+    const toRadians = (degrees) => degrees * Math.PI / 180;
 
-    const lat1Rad =
-        lat1 * Math.PI / 180;
+    const lat1Rad = toRadians(lat1);
+    const lat2Rad = toRadians(lat2);
+    const dLng = toRadians(lng2 - lng1);
 
-    const lat2Rad =
-        lat2 * Math.PI / 180;
-
-    const dLng =
-        (lng2 - lng1)
-        * Math.PI
-        / 180;
-
-    const y =
-        Math.sin(dLng)
-        *
-        Math.cos(lat2Rad);
+    const y = Math.sin(dLng) * Math.cos(lat2Rad);
 
     const x =
-        Math.cos(lat1Rad)
-        *
-        Math.sin(lat2Rad)
-        -
-        Math.sin(lat1Rad)
-        *
-        Math.cos(lat2Rad)
-        *
-        Math.cos(dLng);
-
-    const bearing =
-        Math.atan2(y, x)
-        *
-        180
-        /
-        Math.PI;
+        Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+        Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
 
     return (
-        bearing + 360
-    )
-    % 360;
+        Math.atan2(y, x) * 180 / Math.PI + 360
+    ) % 360;
 }
 
-// ==========================================================================
-// ⬆ 矢印変更
-// ==========================================================================
+// ==============================
+// 14. 方向矢印を変更
+// ==============================
 
-function setArrowByBearing(
-    bearing
-) {
+function setArrowByBearing(bearing) {
+    if (!arrowElement) {
+        return;
+    }
 
-    if (
-        bearing >= 337.5 ||
-        bearing < 22.5
-    ) {
-
-        arrowElement.textContent =
-            "⬆";
-
-    } else if (
-        bearing < 67.5
-    ) {
-
-        arrowElement.textContent =
-            "↗";
-
-    } else if (
-        bearing < 112.5
-    ) {
-
-        arrowElement.textContent =
-            "➡";
-
-    } else if (
-        bearing < 157.5
-    ) {
-
-        arrowElement.textContent =
-            "↘";
-
-    } else if (
-        bearing < 202.5
-    ) {
-
-        arrowElement.textContent =
-            "⬇";
-
-    } else if (
-        bearing < 247.5
-    ) {
-
-        arrowElement.textContent =
-            "↙";
-
-    } else if (
-        bearing < 292.5
-    ) {
-
-        arrowElement.textContent =
-            "⬅";
-
+    if (bearing >= 337.5 || bearing < 22.5) {
+        arrowElement.textContent = "⬆";
+    } else if (bearing < 67.5) {
+        arrowElement.textContent = "↗";
+    } else if (bearing < 112.5) {
+        arrowElement.textContent = "➡";
+    } else if (bearing < 157.5) {
+        arrowElement.textContent = "↘";
+    } else if (bearing < 202.5) {
+        arrowElement.textContent = "⬇";
+    } else if (bearing < 247.5) {
+        arrowElement.textContent = "↙";
+    } else if (bearing < 292.5) {
+        arrowElement.textContent = "⬅";
     } else {
-
-        arrowElement.textContent =
-            "↖";
+        arrowElement.textContent = "↖";
     }
 }
 
-// ==========================================================================
-// ❌ GPSエラー処理
-// ==========================================================================
+// ==============================
+// 15. GPSエラー処理
+// ==============================
 
 function errorGPS(error) {
+    console.error("GPSエラー:", error);
 
-    console.error(
-        "GPSエラー:",
-        error
-    );
+    let message = "⚠️ GPSを取得できません";
 
-    alertBadge.textContent =
-        "⚠️ GPS取得できません";
+    if (error.code === 1) {
+        message = "⚠️ 位置情報の使用を許可してください";
+    } else if (error.code === 2) {
+        message = "⚠️ 現在地を確認できません";
+    } else if (error.code === 3) {
+        message = "⚠️ GPS取得がタイムアウトしました";
+    }
 
-    alertBadge.style.backgroundColor =
-        "#f59e0b";
+    setStatus(message, "#f59e0b");
 
-    arrivalElement.textContent =
-        "位置情報待機中";
+    if (arrivalElement) {
+        arrivalElement.textContent = "位置情報待機中";
+    }
 }
 
-// ==========================================================================
-// ⭐ 星評価機能
-// ==========================================================================
+// ==============================
+// 16. 星評価機能
+// ==============================
 
-stars.forEach(
-    (star) => {
+stars.forEach((star) => {
+    star.addEventListener("click", () => {
+        const value = Number(star.dataset.value);
 
-        star.addEventListener(
-            "click",
-            () => {
+        stars.forEach((item) => {
+            const starValue = Number(item.dataset.value);
 
-                const value =
-                    Number(
-                        star.dataset.value
-                    );
-
-                stars.forEach(
-                    (s) => {
-
-                        const starValue =
-                            Number(
-                                s.dataset.value
-                            );
-
-                        if (
-                            starValue <= value
-                        ) {
-
-                            s.textContent =
-                                "★";
-
-                            s.classList.add(
-                                "active"
-                            );
-
-                        } else {
-
-                            s.textContent =
-                                "☆";
-
-                            s.classList.remove(
-                                "active"
-                            );
-                        }
-                    }
-                );
-
-                setTimeout(
-                    () => {
-
-                        alert(
-                            `星${value}個で評価しました！`
-                        );
-
-                    },
-                    300
-                );
+            if (starValue <= value) {
+                item.textContent = "★";
+                item.classList.add("active");
+            } else {
+                item.textContent = "☆";
+                item.classList.remove("active");
             }
-        );
-    }
-);
+        });
+
+        setTimeout(() => {
+            alert(`星${value}個で評価しました！`);
+        }, 300);
+    });
+});
+
+// ==============================
+// 17. 施設名をHTMLとして扱わないための処理
+// ==============================
+
+function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, (character) => {
+        const replacements = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        };
+
+        return replacements[character];
+    });
+}

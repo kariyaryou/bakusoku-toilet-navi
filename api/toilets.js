@@ -27,13 +27,17 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   );
 }
 
+// キャッシュ用のキーを作成
 function createCacheKey(lat, lng) {
   return `${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
 // 保存済みの多治見市公園データを取得
 function getLocalParks(userLat, userLng) {
-  const parks = Array.isArray(tajimiParks) ? tajimiParks : [];
+  const parks = Array.isArray(tajimiParks)
+    ? tajimiParks
+    : [];
+
   const facilities = [];
 
   for (const park of parks) {
@@ -58,7 +62,9 @@ function getLocalParks(userLat, userLng) {
       lng
     );
 
-    if (distance > SEARCH_RADIUS) continue;
+    if (distance > SEARCH_RADIUS) {
+      continue;
+    }
 
     facilities.push({
       id: `tajimi-park-${park.id ?? facilities.length}`,
@@ -73,7 +79,7 @@ function getLocalParks(userLat, userLng) {
   return facilities;
 }
 
-// Overpass APIで公園・公衆トイレ・コンビニを検索
+// Overpass APIで施設を検索
 async function searchOverpass(lat, lng) {
   const query = `
 [out:json][timeout:10];
@@ -86,6 +92,14 @@ async function searchOverpass(lat, lng) {
   way(around:${SEARCH_RADIUS},${lat},${lng})["shop"="convenience"];
   relation(around:${SEARCH_RADIUS},${lat},${lng})["shop"="convenience"];
 
+  node(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
+  way(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
+  relation(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
+
+  node(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
+  way(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
+  relation(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
+
   node(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
   way(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
   relation(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
@@ -94,6 +108,7 @@ out center tags;
 `;
 
   const controller = new AbortController();
+
   const timeoutId = setTimeout(
     () => controller.abort(),
     TIMEOUT_MS
@@ -117,6 +132,7 @@ out center tags;
       const error = new Error(
         `Overpass API HTTP ${response.status}`
       );
+
       error.status = response.status;
       throw error;
     }
@@ -144,8 +160,11 @@ function convertOverpassFacilities(
   const facilities = [];
 
   for (const element of elements) {
-    const lat = element.lat ?? element.center?.lat;
-    const lng = element.lon ?? element.center?.lon;
+    const lat =
+      element.lat ?? element.center?.lat;
+
+    const lng =
+      element.lon ?? element.center?.lon;
 
     if (
       typeof lat !== "number" ||
@@ -157,18 +176,23 @@ function convertOverpassFacilities(
     }
 
     const tags = element.tags || {};
-
     let type = null;
 
     if (tags.amenity === "toilets") {
       type = "toilet";
     } else if (tags.shop === "convenience") {
       type = "convenience";
+    } else if (tags.amenity === "pharmacy") {
+      type = "pharmacy";
+    } else if (tags.shop === "supermarket") {
+      type = "supermarket";
     } else if (tags.leisure === "park") {
       type = "park";
     }
 
-    if (!type) continue;
+    if (!type) {
+      continue;
+    }
 
     const distance = calculateDistance(
       userLat,
@@ -177,7 +201,9 @@ function convertOverpassFacilities(
       lng
     );
 
-    if (distance > SEARCH_RADIUS) continue;
+    if (distance > SEARCH_RADIUS) {
+      continue;
+    }
 
     let defaultName = "施設";
 
@@ -185,6 +211,10 @@ function convertOverpassFacilities(
       defaultName = "公衆トイレ";
     } else if (type === "convenience") {
       defaultName = "コンビニ";
+    } else if (type === "pharmacy") {
+      defaultName = "薬局";
+    } else if (type === "supermarket") {
+      defaultName = "スーパー";
     } else if (type === "park") {
       defaultName = "公園";
     }
@@ -203,34 +233,40 @@ function convertOverpassFacilities(
 }
 
 // 保存済み公園とOverpassの施設を統合
-function mergeFacilities(localParks, onlineFacilities) {
+function mergeFacilities(
+  localParks,
+  onlineFacilities
+) {
   const facilities = [...localParks];
 
   for (const facility of onlineFacilities) {
-    const duplicate = facilities.some((existing) => {
-      // 公園同士だけ、近い場所なら重複と判断する
-      if (
-        existing.type !== "park" ||
-        facility.type !== "park"
-      ) {
-        return false;
-      }
+    const duplicate = facilities.some(
+      (existing) => {
+        // 公園同士だけ、近い場所なら重複と判断
+        if (
+          existing.type !== "park" ||
+          facility.type !== "park"
+        ) {
+          return false;
+        }
 
-      return (
-        calculateDistance(
-          existing.lat,
-          existing.lng,
-          facility.lat,
-          facility.lng
-        ) < 40
-      );
-    });
+        return (
+          calculateDistance(
+            existing.lat,
+            existing.lng,
+            facility.lat,
+            facility.lng
+          ) < 40
+        );
+      }
+    );
 
     if (!duplicate) {
       facilities.push(facility);
     }
   }
 
+  // 距離が近い順に並べる
   facilities.sort(
     (a, b) => a.distance - b.distance
   );
@@ -252,6 +288,7 @@ export default async function handler(req, res) {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
 
+  // 座標チェック
   if (
     req.query.lat === undefined ||
     req.query.lng === undefined ||
@@ -286,13 +323,13 @@ export default async function handler(req, res) {
     });
   }
 
-  // 同じ場所への同時リクエストを防止
+  // 同じ場所への同時検索を防止
   let searchPromise =
     pendingRequests.get(cacheKey);
 
   if (!searchPromise) {
     searchPromise = (async () => {
-      // まず多治見市の保存済み公園データを取得
+      // まず保存済みの公園データを取得
       const localParks = getLocalParks(
         lat,
         lng
@@ -301,6 +338,7 @@ export default async function handler(req, res) {
       let onlineFacilities = [];
 
       try {
+        // 公衆トイレ・コンビニ・薬局・スーパー・公園を検索
         const elements =
           await searchOverpass(lat, lng);
 
@@ -318,9 +356,11 @@ export default async function handler(req, res) {
             status: error.status
           }
         );
+
+        // 外部検索に失敗しても、
+        // 保存済みの公園データは利用する
       }
 
-      // データを統合
       const facilities =
         mergeFacilities(
           localParks,

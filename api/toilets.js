@@ -1,7 +1,7 @@
 import { tajimiParks } from "../data/tajimi_parks.js";
 
 const SEARCH_RADIUS = 1000;
-const TIMEOUT_MS = 12000;
+const TIMEOUT_MS = 30000;
 
 // 2点間の距離を計算（メートル）
 function calculateDistance(lat1, lng1, lat2, lng2) {

@@ -63,10 +63,19 @@ function getLocalParks(userLat, userLng) {
   return facilities;
 }
 
-// Overpass APIでコンビニを検索
+// overpass.chでコンビニを検索
 async function searchConvenienceStores(lat, lng) {
+  // Vercelの環境変数からAPIキーを取得
+  const apiKey = process.env.OVERPASS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "OVERPASS_API_KEYが設定されていません"
+    );
+  }
+
   const query = `
-[out:json][timeout:10];
+[out:json][timeout:25];
 (
   nwr(around:${SEARCH_RADIUS},${lat},${lng})
     ["shop"="convenience"];
@@ -82,19 +91,23 @@ out center tags;
   );
 
   try {
-    // GET形式でOverpass APIにアクセス
-   const url =
-  　　"https://maps.mail.ru/osm/tools/overpass/api/interpreter?data=" +
- 　　 encodeURIComponent(query);
+    // overpass.chのAPIキー付きURL
+    const url =
+      `https://api.overpass.ch/v1/${apiKey}/interpreter`;
 
     const response = await fetch(url, {
-      method: "GET",
+      method: "POST",
+      body: new URLSearchParams({
+        data: query
+      }),
       signal: controller.signal
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+
       throw new Error(
-        `Overpass API HTTP ${response.status}`
+        `Overpass API HTTP ${response.status}: ${errorText}`
       );
     }
 
@@ -106,9 +119,9 @@ out center tags;
       );
     }
 
-    // VercelのLogsで検索結果の件数を確認できる
+    // VercelのLogsで検索結果の件数を確認
     console.log(
-      "Overpass コンビニ検索結果:",
+      "overpass.ch コンビニ検索結果:",
       data.elements.length
     );
 
@@ -215,7 +228,7 @@ export default async function handler(req, res) {
     // ① 保存済みの公園データを取得
     const localParks = getLocalParks(lat, lng);
 
-    // ② Overpass APIからコンビニを取得
+    // ② overpass.chからコンビニを取得
     let convenienceStores = [];
 
     try {

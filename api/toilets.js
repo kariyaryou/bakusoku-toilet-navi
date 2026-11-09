@@ -2,10 +2,6 @@ import { tajimiParks } from "../data/tajimi_parks.js";
 
 const SEARCH_RADIUS = 1000;
 const TIMEOUT_MS = 12000;
-const CACHE_TTL = 60 * 1000;
-
-const cache = new Map();
-const pendingRequests = new Map();
 
 // 2点間の距離を計算（メートル）
 function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -27,30 +23,17 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   );
 }
 
-// キャッシュ用のキーを作成
-function createCacheKey(lat, lng) {
-  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
-}
-
 // 保存済みの多治見市公園データを取得
 function getLocalParks(userLat, userLng) {
-  const parks = Array.isArray(tajimiParks)
-    ? tajimiParks
-    : [];
-
   const facilities = [];
 
-  for (const park of parks) {
+  for (const park of tajimiParks) {
     const lat = Number(park.lat);
     const lng = Number(park.lng);
 
     if (
       !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
+      !Number.isFinite(lng)
     ) {
       continue;
     }
@@ -79,30 +62,13 @@ function getLocalParks(userLat, userLng) {
   return facilities;
 }
 
-// Overpass APIで施設を検索
-async function searchOverpass(lat, lng) {
+// Overpass APIでコンビニだけを検索
+async function searchConvenienceStores(lat, lng) {
   const query = `
 [out:json][timeout:10];
 (
-  node(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="toilets"];
-  way(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="toilets"];
-  relation(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="toilets"];
-
-  node(around:${SEARCH_RADIUS},${lat},${lng})["shop"="convenience"];
-  way(around:${SEARCH_RADIUS},${lat},${lng})["shop"="convenience"];
-  relation(around:${SEARCH_RADIUS},${lat},${lng})["shop"="convenience"];
-
-  node(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
-  way(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
-  relation(around:${SEARCH_RADIUS},${lat},${lng})["amenity"="pharmacy"];
-
-  node(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
-  way(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
-  relation(around:${SEARCH_RADIUS},${lat},${lng})["shop"="supermarket"];
-
-  node(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
-  way(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
-  relation(around:${SEARCH_RADIUS},${lat},${lng})["leisure"="park"];
+  nwr(around:${SEARCH_RADIUS},${lat},${lng})
+    ["shop"="convenience"];
 );
 out center tags;
 `;
@@ -120,30 +86,33 @@ out center tags;
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json"
+          "Content-Type":
+            "application/x-www-form-urlencoded"
         },
-        body: `data=${encodeURIComponent(query)}`,
+        body:
+          "data=" + encodeURIComponent(query),
         signal: controller.signal
       }
     );
 
     if (!response.ok) {
-      const error = new Error(
+      throw new Error(
         `Overpass API HTTP ${response.status}`
       );
-
-      error.status = response.status;
-      throw error;
     }
 
     const data = await response.json();
 
     if (!Array.isArray(data.elements)) {
       throw new Error(
-        "施設データの形式が正しくありません"
+        "Overpassから施設データを取得できませんでした"
       );
     }
+
+    console.log(
+      "Overpass コンビニ検索結果:",
+      data.elements.length
+    );
 
     return data.elements;
   } finally {
@@ -151,8 +120,8 @@ out center tags;
   }
 }
 
-// Overpassのデータをアプリ用に変換
-function convertOverpassFacilities(
+// Overpassのコンビニデータを変換
+function convertConvenienceStores(
   elements,
   userLat,
   userLng
@@ -167,30 +136,9 @@ function convertOverpassFacilities(
       element.lon ?? element.center?.lon;
 
     if (
-      typeof lat !== "number" ||
-      typeof lng !== "number" ||
       !Number.isFinite(lat) ||
       !Number.isFinite(lng)
     ) {
-      continue;
-    }
-
-    const tags = element.tags || {};
-    let type = null;
-
-    if (tags.amenity === "toilets") {
-      type = "toilet";
-    } else if (tags.shop === "convenience") {
-      type = "convenience";
-    } else if (tags.amenity === "pharmacy") {
-      type = "pharmacy";
-    } else if (tags.shop === "supermarket") {
-      type = "supermarket";
-    } else if (tags.leisure === "park") {
-      type = "park";
-    }
-
-    if (!type) {
       continue;
     }
 
@@ -205,24 +153,12 @@ function convertOverpassFacilities(
       continue;
     }
 
-    let defaultName = "施設";
-
-    if (type === "toilet") {
-      defaultName = "公衆トイレ";
-    } else if (type === "convenience") {
-      defaultName = "コンビニ";
-    } else if (type === "pharmacy") {
-      defaultName = "薬局";
-    } else if (type === "supermarket") {
-      defaultName = "スーパー";
-    } else if (type === "park") {
-      defaultName = "公園";
-    }
+    const tags = element.tags || {};
 
     facilities.push({
       id: `osm-${element.type}-${element.id}`,
-      name: tags.name || defaultName,
-      type,
+      name: tags.name || "コンビニ",
+      type: "convenience",
       lat,
       lng,
       distance: Math.round(distance)
@@ -232,41 +168,16 @@ function convertOverpassFacilities(
   return facilities;
 }
 
-// 保存済み公園とOverpassの施設を統合
+// 公園とコンビニを統合
 function mergeFacilities(
   localParks,
-  onlineFacilities
+  convenienceStores
 ) {
-  const facilities = [...localParks];
+  const facilities = [
+    ...localParks,
+    ...convenienceStores
+  ];
 
-  for (const facility of onlineFacilities) {
-    const duplicate = facilities.some(
-      (existing) => {
-        // 公園同士だけ、近い場所なら重複と判断
-        if (
-          existing.type !== "park" ||
-          facility.type !== "park"
-        ) {
-          return false;
-        }
-
-        return (
-          calculateDistance(
-            existing.lat,
-            existing.lng,
-            facility.lat,
-            facility.lng
-          ) < 40
-        );
-      }
-    );
-
-    if (!duplicate) {
-      facilities.push(facility);
-    }
-  }
-
-  // 距離が近い順に並べる
   facilities.sort(
     (a, b) => a.distance - b.distance
   );
@@ -277,8 +188,6 @@ function mergeFacilities(
 // API本体
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-
     return res.status(405).json({
       success: false,
       error: "GETリクエストのみ対応しています"
@@ -288,18 +197,9 @@ export default async function handler(req, res) {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
 
-  // 座標チェック
   if (
-    req.query.lat === undefined ||
-    req.query.lng === undefined ||
-    req.query.lat === "" ||
-    req.query.lng === "" ||
     !Number.isFinite(lat) ||
-    !Number.isFinite(lng) ||
-    lat < -90 ||
-    lat > 90 ||
-    lng < -180 ||
-    lng > 180
+    !Number.isFinite(lng)
   ) {
     return res.status(400).json({
       success: false,
@@ -307,107 +207,59 @@ export default async function handler(req, res) {
     });
   }
 
-  const cacheKey = createCacheKey(lat, lng);
-  const cached = cache.get(cacheKey);
-
-  // キャッシュがあれば使用
-  if (
-    cached &&
-    Date.now() - cached.time < CACHE_TTL
-  ) {
-    return res.status(200).json({
-      success: true,
-      count: cached.facilities.length,
-      facilities: cached.facilities,
-      cached: true
-    });
-  }
-
-  // 同じ場所への同時検索を防止
-  let searchPromise =
-    pendingRequests.get(cacheKey);
-
-  if (!searchPromise) {
-    searchPromise = (async () => {
-      // まず保存済みの公園データを取得
-      const localParks = getLocalParks(
-        lat,
-        lng
-      );
-
-      let onlineFacilities = [];
-
-      try {
-        // 公衆トイレ・コンビニ・薬局・スーパー・公園を検索
-        const elements =
-          await searchOverpass(lat, lng);
-
-        onlineFacilities =
-          convertOverpassFacilities(
-            elements,
-            lat,
-            lng
-          );
-      } catch (error) {
-        console.error(
-          "施設の外部検索に失敗:",
-          {
-            message: error.message,
-            status: error.status
-          }
-        );
-
-        // 外部検索に失敗しても、
-        // 保存済みの公園データは利用する
-      }
-
-      const facilities =
-        mergeFacilities(
-          localParks,
-          onlineFacilities
-        );
-
-      // キャッシュに保存
-      cache.set(cacheKey, {
-        time: Date.now(),
-        facilities
-      });
-
-      return facilities;
-    })();
-
-    pendingRequests.set(
-      cacheKey,
-      searchPromise
-    );
-  }
-
   try {
-    const facilities =
-      await searchPromise;
+    // 公園は必ずローカルデータから取得
+    const localParks = getLocalParks(lat, lng);
+
+    let convenienceStores = [];
+
+    try {
+      const elements =
+        await searchConvenienceStores(lat, lng);
+
+      convenienceStores =
+        convertConvenienceStores(
+          elements,
+          lat,
+          lng
+        );
+    } catch (error) {
+      console.error(
+        "コンビニ検索エラー:",
+        error.message
+      );
+    }
+
+    const facilities = mergeFacilities(
+      localParks,
+      convenienceStores
+    );
+
+    console.log(
+      "最終検索結果:",
+      facilities.map(
+        (facility) => ({
+          name: facility.name,
+          type: facility.type
+        })
+      )
+    );
 
     return res.status(200).json({
       success: true,
       count: facilities.length,
-      facilities,
-      cached: false
+      facilities
     });
+
   } catch (error) {
     console.error(
       "施設検索エラー:",
-      error.message
+      error
     );
 
     return res.status(500).json({
       success: false,
       error: "施設の検索に失敗しました"
     });
-  } finally {
-    if (
-      pendingRequests.get(cacheKey) ===
-      searchPromise
-    ) {
-      pendingRequests.delete(cacheKey);
-    }
   }
 }

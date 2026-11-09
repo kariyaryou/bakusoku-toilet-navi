@@ -45,6 +45,7 @@ function getLocalParks(userLat, userLng) {
       lng
     );
 
+    // 1km以内の公園だけを追加
     if (distance > SEARCH_RADIUS) {
       continue;
     }
@@ -62,7 +63,7 @@ function getLocalParks(userLat, userLng) {
   return facilities;
 }
 
-// Overpass APIでコンビニだけを検索
+// Overpass APIでコンビニを検索
 async function searchConvenienceStores(lat, lng) {
   const query = `
 [out:json][timeout:10];
@@ -81,19 +82,15 @@ out center tags;
   );
 
   try {
-　　　const response = await fetch(
-　　  "https://overpass-api.de/api/interpreter",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-        },
-        body:
-          "data=" + encodeURIComponent(query),
-        signal: controller.signal
-      }
-    );
+    // GET形式でOverpass APIにアクセス
+    const url =
+      "https://overpass-api.de/api/interpreter?data=" +
+      encodeURIComponent(query);
+
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -109,18 +106,20 @@ out center tags;
       );
     }
 
+    // VercelのLogsで検索結果の件数を確認できる
     console.log(
       "Overpass コンビニ検索結果:",
       data.elements.length
     );
 
     return data.elements;
+
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-// Overpassのコンビニデータを変換
+// Overpassのコンビニデータをアプリ用に変換
 function convertConvenienceStores(
   elements,
   userLat,
@@ -129,6 +128,8 @@ function convertConvenienceStores(
   const facilities = [];
 
   for (const element of elements) {
+    // nodeの場合はlat/lon、
+    // wayやrelationの場合はcenterを使用
     const lat =
       element.lat ?? element.center?.lat;
 
@@ -178,6 +179,7 @@ function mergeFacilities(
     ...convenienceStores
   ];
 
+  // 現在地から近い順に並べる
   facilities.sort(
     (a, b) => a.distance - b.distance
   );
@@ -187,6 +189,7 @@ function mergeFacilities(
 
 // API本体
 export default async function handler(req, res) {
+  // GET以外のアクセスは受け付けない
   if (req.method !== "GET") {
     return res.status(405).json({
       success: false,
@@ -197,6 +200,7 @@ export default async function handler(req, res) {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
 
+  // 緯度・経度をチェック
   if (
     !Number.isFinite(lat) ||
     !Number.isFinite(lng)
@@ -208,9 +212,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 公園は必ずローカルデータから取得
+    // ① 保存済みの公園データを取得
     const localParks = getLocalParks(lat, lng);
 
+    // ② Overpass APIからコンビニを取得
     let convenienceStores = [];
 
     try {
@@ -223,18 +228,23 @@ export default async function handler(req, res) {
           lat,
           lng
         );
+
     } catch (error) {
+      // コンビニ検索に失敗しても
+      // 公園データは返す
       console.error(
         "コンビニ検索エラー:",
         error.message
       );
     }
 
+    // ③ 公園とコンビニをまとめる
     const facilities = mergeFacilities(
       localParks,
       convenienceStores
     );
 
+    // Vercel Logsで最終結果を確認
     console.log(
       "最終検索結果:",
       facilities.map(

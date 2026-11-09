@@ -83,9 +83,9 @@ out center tags;
 
   try {
     // GET形式でOverpass APIにアクセス
-    const url =
-      "https://maps.mail.ru/osm/tools/overpass/api/interpreter" +
-      encodeURIComponent(query);
+   const url =
+  　　"https://maps.mail.ru/osm/tools/overpass/api/interpreter?data=" +
+ 　　 encodeURIComponent(query);
 
     const response = await fetch(url, {
       method: "GET",

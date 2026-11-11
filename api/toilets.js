@@ -63,7 +63,7 @@ function getLocalParks(userLat, userLng) {
   return facilities;
 }
 
-// overpass.chでコンビニを検索
+// overpass.chでコンビニ・スーパー・薬局を検索
 async function searchConvenienceStores(lat, lng) {
   // Vercelの環境変数からAPIキーを取得
   const apiKey = process.env.OVERPASS_API_KEY;
@@ -79,6 +79,15 @@ async function searchConvenienceStores(lat, lng) {
 (
   nwr(around:${SEARCH_RADIUS},${lat},${lng})
     ["shop"="convenience"];
+
+  nwr(around:${SEARCH_RADIUS},${lat},${lng})
+    ["shop"="supermarket"];
+
+  nwr(around:${SEARCH_RADIUS},${lat},${lng})
+    ["amenity"="pharmacy"];
+
+  nwr(around:${SEARCH_RADIUS},${lat},${lng})
+    ["shop"="chemist"];
 );
 out center tags;
 `;
@@ -121,7 +130,7 @@ out center tags;
 
     // VercelのLogsで検索結果の件数を確認
     console.log(
-      "overpass.ch コンビニ検索結果:",
+      "overpass.ch 周辺施設検索結果:",
       data.elements.length
     );
 
@@ -132,7 +141,7 @@ out center tags;
   }
 }
 
-// Overpassのコンビニデータをアプリ用に変換
+// Overpassの施設データをアプリ用に変換
 function convertConvenienceStores(
   elements,
   userLat,
@@ -169,10 +178,27 @@ function convertConvenienceStores(
 
     const tags = element.tags || {};
 
+    // 施設の種類を判別
+    let type = "convenience";
+    let defaultName = "コンビニ";
+
+    if (tags.shop === "supermarket") {
+      type = "supermarket";
+      defaultName = "スーパー";
+    }
+
+    if (
+      tags.amenity === "pharmacy" ||
+      tags.shop === "chemist"
+    ) {
+      type = "pharmacy";
+      defaultName = "薬局";
+    }
+
     facilities.push({
       id: `osm-${element.type}-${element.id}`,
-      name: tags.name || "コンビニ",
-      type: "convenience",
+      name: tags.name || defaultName,
+      type,
       lat,
       lng,
       distance: Math.round(distance)
@@ -182,7 +208,7 @@ function convertConvenienceStores(
   return facilities;
 }
 
-// 公園とコンビニを統合
+// 公園とコンビニ・スーパー・薬局を統合
 function mergeFacilities(
   localParks,
   convenienceStores
@@ -228,7 +254,7 @@ export default async function handler(req, res) {
     // ① 保存済みの公園データを取得
     const localParks = getLocalParks(lat, lng);
 
-    // ② overpass.chからコンビニを取得
+    // ② overpass.chからコンビニ・スーパー・薬局を取得
     let convenienceStores = [];
 
     try {
@@ -243,15 +269,15 @@ export default async function handler(req, res) {
         );
 
     } catch (error) {
-      // コンビニ検索に失敗しても
+      // 施設検索に失敗しても
       // 公園データは返す
       console.error(
-        "コンビニ検索エラー:",
+        "周辺施設検索エラー:",
         error.message
       );
     }
 
-    // ③ 公園とコンビニをまとめる
+    // ③ 公園と周辺施設をまとめる
     const facilities = mergeFacilities(
       localParks,
       convenienceStores

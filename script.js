@@ -797,7 +797,25 @@ stars.forEach((star) => {
 });
 
 // ==============================
-// 17. 施設名をHTMLとして扱わないための処理
+// 17. 施設ごとのIDを作成
+// ==============================
+
+function getFacilityId(facility) {
+    if (!facility) {
+        return null;
+    }
+
+    // APIから施設IDがある場合はそれを使用
+    if (facility.id) {
+        return String(facility.id);
+    }
+
+    // IDがない場合は施設名と座標からIDを作成
+    return `${facility.name}_${facility.lat}_${facility.lng}`;
+}
+
+// ==============================
+// 18. 施設名をHTMLとして扱わないための処理
 // ==============================
 
 function escapeHTML(value) {

@@ -28,6 +28,55 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 console.log("Firebaseに接続しました！");
+
+// 清潔度の平均評価を読み込む関数
+async function loadAverageRating() {
+    
+// ==============================
+// 清潔度の平均評価を表示
+// ==============================
+
+async function loadAverageRating() {
+    try {
+        // Firestoreからすべての評価を取得
+        const querySnapshot = await getDocs(
+            collection(db, "ratings")
+        );
+
+        let total = 0;
+        let count = 0;
+
+        // 保存されている評価を1つずつ確認
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+
+            if (typeof data.value === "number") {
+                total += data.value;
+                count++;
+            }
+        });
+
+        // 平均を計算
+        if (count > 0) {
+            const average = total / count;
+
+            // HTMLの清潔度欄を取得
+            const averageRatingElement =
+                document.getElementById("average-rating");
+
+            // 平均を小数第1位まで表示
+            averageRatingElement.textContent =
+                `★ ${average.toFixed(1)} / 5`;
+        }
+
+    } catch (error) {
+        console.error("評価の読み込みに失敗しました:", error);
+    }
+}
+    
+// ページを開いたら平均を読み込む
+loadAverageRating();
+    
 /* ==========================================================
    🚻 爆速トイレナビ
    IBS緊急回避システム

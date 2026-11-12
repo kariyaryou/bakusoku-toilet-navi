@@ -42,6 +42,14 @@ console.log("Firebaseに接続しました！");
 
 async function loadAverageRating() {
     try {
+        // 現在表示している施設のIDを取得
+        const facilityId = getFacilityId(nearestFacility);
+
+        // まだ施設が選択されていない場合
+        if (!facilityId) {
+            return;
+        }
+
         // Firestoreからすべての評価を取得
         const querySnapshot = await getDocs(
             collection(db, "ratings")
@@ -54,29 +62,40 @@ async function loadAverageRating() {
         querySnapshot.forEach((doc) => {
             const data = doc.data();
 
-            // valueが数字の場合だけ集計
-            if (typeof data.value === "number") {
+            // 今表示している施設と同じIDの評価だけ集計
+            if (
+                data.facilityId === facilityId &&
+                typeof data.value === "number"
+            ) {
                 total += data.value;
                 count++;
             }
         });
 
-        // 平均を計算して画面に表示
+        // HTMLの清潔度欄を取得
         const averageRatingElement =
             document.getElementById("average-rating");
 
-        if (count > 0 && averageRatingElement) {
+        if (!averageRatingElement) {
+            return;
+        }
+
+        // 評価がある場合は平均を表示
+        if (count > 0) {
             const average = total / count;
 
             averageRatingElement.textContent =
                 `★ ${average.toFixed(1)} / 5`;
+        } else {
+            // まだ評価がない場合
+            averageRatingElement.textContent =
+                "まだ評価がありません";
         }
 
     } catch (error) {
         console.error("評価の読み込みに失敗しました:", error);
     }
 }
-
 
 // ページを開いたら平均を読み込む
 loadAverageRating();

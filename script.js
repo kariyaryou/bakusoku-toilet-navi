@@ -1,4 +1,33 @@
+// Firebaseを読み込む
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
 
+import {
+    getFirestore,
+    collection,
+    addDoc,
+    getDocs
+} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
+
+
+// Firebaseの設定
+const firebaseConfig = {
+    apiKey: "AIzaSyBk1BBUSi1bXEAifzwUzEdIZYhLQxjEL60",
+    authDomain: "bakusoku-toilet-navi.firebaseapp.com",
+    projectId: "bakusoku-toilet-navi",
+    storageBucket: "bakusoku-toilet-navi.firebasestorage.app",
+    messagingSenderId: "599765814060",
+    appId: "1:599765814060:web:f6716d7d5cd518269a3a89"
+};
+
+
+// Firebaseを開始
+const app = initializeApp(firebaseConfig);
+
+
+// Firestoreを使えるようにする
+const db = getFirestore(app);
+
+console.log("Firebaseに接続しました！");
 /* ==========================================================
    🚻 爆速トイレナビ
    IBS緊急回避システム

@@ -97,8 +97,6 @@ async function loadAverageRating() {
     }
 }
 
-// ページを開いたら平均を読み込む
-loadAverageRating();
 /* ==========================================================
    🚻 爆速トイレナビ
    IBS緊急回避システム
@@ -860,3 +858,6 @@ function escapeHTML(value) {
         return replacements[character];
     });
 }
+
+// ページを開いたら平均を読み込む
+loadAverageRating();

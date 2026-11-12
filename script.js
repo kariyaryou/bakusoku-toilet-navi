@@ -73,7 +73,7 @@ async function loadAverageRating() {
         console.error("評価の読み込みに失敗しました:", error);
     }
 }
-    
+}    
 // ページを開いたら平均を読み込む
 loadAverageRating();
     

@@ -712,9 +712,10 @@ function errorGPS(error) {
 // ==============================
 
 stars.forEach((star) => {
-    star.addEventListener("click", () => {
+    star.addEventListener("click", async () => {
         const value = Number(star.dataset.value);
 
+        // 星の見た目を変更
         stars.forEach((item) => {
             const starValue = Number(item.dataset.value);
 
@@ -727,9 +728,19 @@ stars.forEach((star) => {
             }
         });
 
-        setTimeout(() => {
-            alert(`星${value}個で評価しました！`);
-        }, 300);
+        try {
+            // Firestoreの「ratings」に評価を保存
+            await addDoc(collection(db, "ratings"), {
+                value: value,
+                createdAt: new Date()
+            });
+
+            alert(`星${value}個の評価を保存しました！`);
+
+        } catch (error) {
+            console.error("評価の保存に失敗しました:", error);
+            alert("評価の保存に失敗しました。");
+        }
     });
 });
 

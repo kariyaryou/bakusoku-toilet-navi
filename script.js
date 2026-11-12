@@ -1,37 +1,12 @@
-// Firebaseを読み込む
-import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
-
-import {
-    getFirestore,
-    collection,
-    addDoc,
-    getDocs
-} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
-
-
-// Firebaseの設定
-const firebaseConfig = {
-    apiKey: "AIzaSyBk1BBUSi1bXEAifzwUzEdIZYhLQxjEL60",
-    authDomain: "bakusoku-toilet-navi.firebaseapp.com",
-    projectId: "bakusoku-toilet-navi",
-    storageBucket: "bakusoku-toilet-navi.firebasestorage.app",
-    messagingSenderId: "599765814060",
-    appId: "1:599765814060:web:f6716d7d5cd518269a3a89"
-};
-
-
 // Firebaseを開始
 const app = initializeApp(firebaseConfig);
-
 
 // Firestoreを使えるようにする
 const db = getFirestore(app);
 
 console.log("Firebaseに接続しました！");
 
-// 清潔度の平均評価を読み込む関数
-async function loadAverageRating() {
-    
+
 // ==============================
 // 清潔度の平均評価を表示
 // ==============================
@@ -65,18 +40,20 @@ async function loadAverageRating() {
                 document.getElementById("average-rating");
 
             // 平均を小数第1位まで表示
-            averageRatingElement.textContent =
-                `★ ${average.toFixed(1)} / 5`;
+            if (averageRatingElement) {
+                averageRatingElement.textContent =
+                    `★ ${average.toFixed(1)} / 5`;
+            }
         }
 
     } catch (error) {
         console.error("評価の読み込みに失敗しました:", error);
     }
 }
-}    
+
+
 // ページを開いたら平均を読み込む
 loadAverageRating();
-    
 /* ==========================================================
    🚻 爆速トイレナビ
    IBS緊急回避システム

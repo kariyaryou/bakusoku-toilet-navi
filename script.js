@@ -363,9 +363,12 @@ async function searchNearbyToilets(userLat, userLng) {
         }
 
         nearestFacility = closestFacility;
-
+        
         console.log("選択した施設:", nearestFacility);
-
+        
+        // 平均評価を読み込む
+        loadAverageRating();
+        
         showNearestFacility(
             userLat,
             userLng,

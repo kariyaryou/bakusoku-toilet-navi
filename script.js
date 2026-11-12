@@ -1,4 +1,21 @@
+// ==============================
+// Firebaseを読み込む
+// ==============================
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
+
+import {
+    getFirestore,
+    collection,
+    addDoc,
+    getDocs
+} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
+
+
+// ==============================
 // Firebaseの設定
+// ==============================
+
 const firebaseConfig = {
     apiKey: "AIzaSyBk1BBUSi1bXEAifzwUzEdIZYhLQxjEL60",
     authDomain: "bakusoku-toilet-navi.firebaseapp.com",
@@ -8,8 +25,10 @@ const firebaseConfig = {
     appId: "1:599765814060:web:f6716d7d5cd518269a3a89"
 };
 
+
 // Firebaseを開始
 const app = initializeApp(firebaseConfig);
+
 
 // Firestoreを使えるようにする
 const db = getFirestore(app);
@@ -35,25 +54,22 @@ async function loadAverageRating() {
         querySnapshot.forEach((doc) => {
             const data = doc.data();
 
+            // valueが数字の場合だけ集計
             if (typeof data.value === "number") {
                 total += data.value;
                 count++;
             }
         });
 
-        // 平均を計算
-        if (count > 0) {
+        // 平均を計算して画面に表示
+        const averageRatingElement =
+            document.getElementById("average-rating");
+
+        if (count > 0 && averageRatingElement) {
             const average = total / count;
 
-            // HTMLの清潔度欄を取得
-            const averageRatingElement =
-                document.getElementById("average-rating");
-
-            // 平均を小数第1位まで表示
-            if (averageRatingElement) {
-                averageRatingElement.textContent =
-                    `★ ${average.toFixed(1)} / 5`;
-            }
+            averageRatingElement.textContent =
+                `★ ${average.toFixed(1)} / 5`;
         }
 
     } catch (error) {

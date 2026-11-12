@@ -781,11 +781,21 @@ stars.forEach((star) => {
         });
 
         try {
-            // Firestoreの「ratings」に評価を保存
-            await addDoc(collection(db, "ratings"), {
-                value: value,
-                createdAt: new Date()
-            });
+            // 現在表示している施設のIDを取得
+　　　　　　　const facilityId = getFacilityId(nearestFacility);
+
+        // 施設が選択されていない場合は保存しない
+        if (!facilityId) {
+            alert("評価する施設が選択されていません。");
+            return;
+        }
+
+        // Firebaseに評価を保存
+        await addDoc(collection(db, "ratings"), {
+            facilityId: facilityId,
+            value: value,
+            createdAt: new Date()
+        });
 
             alert(`星${value}個の評価を保存しました！`);
 

@@ -404,7 +404,14 @@ function showNearestFacility(userLat, userLng, facility) {
     toiletMarker = L.marker([
         facility.lat,
         facility.lng
-    ])
+    ], {
+        icon: L.divIcon({
+            html: "🚻",
+            className: "toilet-marker",
+            iconSize: [35, 35],
+            iconAnchor: [17, 17]
+        })
+    })
         .addTo(map)
         .bindPopup(
             `📍 ${escapeHTML(facility.name || "周辺施設")}`
@@ -427,7 +434,6 @@ function showNearestFacility(userLat, userLng, facility) {
     // 目的地決定後に徒歩ルートを取得
     requestRouteIfNeeded(userLat, userLng, true);
 }
-
 // ==============================
 // 9. 徒歩ルート取得の必要性を確認
 // ==============================

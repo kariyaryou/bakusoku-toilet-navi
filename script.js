@@ -409,7 +409,7 @@ function showNearestFacility(userLat, userLng, facility) {
             html: '<span style="font-size: 50px;">🚻</span>',
             className: "toilet-marker",
             iconSize: [50, 50],
-            iconAnchor: [25, 25]
+            iconAnchor: [20, 20]
         })
     })
         .addTo(map)

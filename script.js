@@ -408,7 +408,7 @@ function showNearestFacility(userLat, userLng, facility) {
         icon: L.divIcon({
             html: "🚻",
             className: "toilet-marker",
-            iconSize: [35, 35],
+            iconSize: [100, 100],
             iconAnchor: [17, 17]
         })
     })

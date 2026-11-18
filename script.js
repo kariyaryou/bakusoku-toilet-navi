@@ -644,7 +644,7 @@ function updateNavigation(userLat, userLng) {
     // 徒歩ルート取得成功時はルート距離に置き換わる
     if (distanceElement) {
         distanceElement.innerHTML =
-            `直線距離 ${Math.round(distance)} <span>m</span>`;
+            ` ${Math.round(distance)} <span>m</span>`;
     }
 
     const minutes = Math.max(

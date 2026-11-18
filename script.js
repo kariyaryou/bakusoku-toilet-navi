@@ -406,10 +406,10 @@ function showNearestFacility(userLat, userLng, facility) {
         facility.lng
     ], {
         icon: L.divIcon({
-            html: "🚻",
+            html: '<span style="font-size: 40px;">🚻</span>',
             className: "toilet-marker",
-            iconSize: [1000, 1000],
-            iconAnchor: [17, 17]
+            iconSize: [50, 50],
+            iconAnchor: [25, 25]
         })
     })
         .addTo(map)
